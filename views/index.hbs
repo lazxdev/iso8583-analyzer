@@ -124,6 +124,9 @@
           <button class="tab-btn" data-tab="json-tab">
             <i class="fa-solid fa-code"></i> JSON Output
           </button>
+          <button class="tab-btn" data-tab="compare-tab">
+            <i class="fa-solid fa-scale-balanced"></i> Compare
+          </button>
         </div>
 
         <div class="panel-body tab-content-wrapper">
@@ -201,6 +204,90 @@
               </div>
               <pre><code class="code-font" id="json-viewer">{}</code></pre>
             </div>
+          </div>
+
+          <!-- Tab 4: Compare Messages -->
+          <div id="compare-tab" class="tab-content">
+            <div class="compare-grid">
+              <div class="compare-col">
+                <h4>Message A</h4>
+                <textarea id="raw-message-a" placeholder="Paste ISO message A" rows="6"></textarea>
+              </div>
+              <div class="compare-col">
+                <h4>Message B</h4>
+                <textarea id="raw-message-b" placeholder="Paste ISO message B" rows="6"></textarea>
+              </div>
+            </div>
+            <div class="action-row">
+              <button id="compare-btn" class="btn btn-primary btn-block">
+                <i class="fa-solid fa-arrows-rotate button-icon"></i> Compare Messages
+              </button>
+            </div>
+
+              <div class="compare-results">
+                <h3>Comparison Result</h3>
+                <div class="compare-visual-grid">
+                  <div class="compare-panel">
+                    <h4>Message A</h4>
+                    <div class="mti-card">
+                      <div class="mti-card-header">
+                        <span class="badge badge-mti" id="a-mti-badge">-</span>
+                        <h3>MTI Details</h3>
+                      </div>
+                      <div class="mti-grid">
+                        <div class="mti-field"><span class="mti-label">ISO Version</span><span class="mti-val" id="a-mti-version">-</span></div>
+                        <div class="mti-field"><span class="mti-label">Message Class</span><span class="mti-val" id="a-mti-class">-</span></div>
+                        <div class="mti-field"><span class="mti-label">Message Function</span><span class="mti-val" id="a-mti-func">-</span></div>
+                        <div class="mti-field"><span class="mti-label">Originator</span><span class="mti-val" id="a-mti-origin">-</span></div>
+                      </div>
+                      <ul><li><strong>Input:</strong> <span id="a-meta-format">-</span></li><li><strong>Header:</strong> <span id="a-meta-header">-</span></li><li><strong>PBitmap:</strong> <span id="a-meta-pbitmap">-</span></li><li><strong>SBitmap:</strong> <span id="a-meta-sbitmap">-</span></li></ul>
+                    </div>
+
+                    <div class="bitmap-container">
+                      <h5>Primary Bitmap</h5>
+                      <div class="bitmap-grid" id="a-primary-bitmap-grid"></div>
+                    </div>
+                    <div class="bitmap-container hidden" id="a-secondary-container">
+                      <h5>Secondary Bitmap</h5>
+                      <div class="bitmap-grid" id="a-secondary-bitmap-grid"></div>
+                    </div>
+                  </div>
+
+                  <div class="compare-panel">
+                    <h4>Message B</h4>
+                    <div class="mti-card">
+                      <div class="mti-card-header">
+                        <span class="badge badge-mti" id="b-mti-badge">-</span>
+                        <h3>MTI Details</h3>
+                      </div>
+                      <div class="mti-grid">
+                        <div class="mti-field"><span class="mti-label">ISO Version</span><span class="mti-val" id="b-mti-version">-</span></div>
+                        <div class="mti-field"><span class="mti-label">Message Class</span><span class="mti-val" id="b-mti-class">-</span></div>
+                        <div class="mti-field"><span class="mti-label">Message Function</span><span class="mti-val" id="b-mti-func">-</span></div>
+                        <div class="mti-field"><span class="mti-label">Originator</span><span class="mti-val" id="b-mti-origin">-</span></div>
+                      </div>
+                      <ul><li><strong>Input:</strong> <span id="b-meta-format">-</span></li><li><strong>Header:</strong> <span id="b-meta-header">-</span></li><li><strong>PBitmap:</strong> <span id="b-meta-pbitmap">-</span></li><li><strong>SBitmap:</strong> <span id="b-meta-sbitmap">-</span></li></ul>
+                    </div>
+
+                    <div class="bitmap-container">
+                      <h5>Primary Bitmap</h5>
+                      <div class="bitmap-grid" id="b-primary-bitmap-grid"></div>
+                    </div>
+                    <div class="bitmap-container hidden" id="b-secondary-container">
+                      <h5>Secondary Bitmap</h5>
+                      <div class="bitmap-grid" id="b-secondary-bitmap-grid"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="compare-summary" class="compare-summary hidden">
+                  <div class="compare-summary-card">
+                    <p><strong>Shared fields:</strong> <span id="shared-fields-count">0</span></p>
+                    <p><strong>Only in A:</strong> <span id="only-a-count">0</span></p>
+                    <p><strong>Only in B:</strong> <span id="only-b-count">0</span></p>
+                  </div>
+                </div>
+              </div>
           </div>
         </div>
       </section>

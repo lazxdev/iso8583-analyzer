@@ -489,4 +489,197 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Start initialization
   initGrids();
+
+  // --- Compare UI elements ---
+  const rawMessageA = document.getElementById('raw-message-a');
+  const rawMessageB = document.getElementById('raw-message-b');
+  const compareBtn = document.getElementById('compare-btn');
+  const compareSummary = document.getElementById('compare-summary');
+  const sharedCount = document.getElementById('shared-fields-count');
+  const onlyACount = document.getElementById('only-a-count');
+  const onlyBCount = document.getElementById('only-b-count');
+
+  if (compareBtn) {
+    compareBtn.addEventListener('click', async () => {
+      const a = (rawMessageA && rawMessageA.value) ? rawMessageA.value.trim() : '';
+      const b = (rawMessageB && rawMessageB.value) ? rawMessageB.value.trim() : '';
+      if (!a || !b) {
+        alert('Please provide both Message A and Message B to compare.');
+        return;
+      }
+
+      compareBtn.disabled = true;
+      compareBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin button-icon"></i> Comparing...';
+      compareSummary?.classList.add('hidden');
+
+      try {
+        const resp = await fetch('/api/compare', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ a, b })
+        });
+        const data = await resp.json();
+        // render visual comparison
+        if (typeof renderVisualCompare === 'function') {
+          try { renderVisualCompare(data); } catch (e) { console.error(e); }
+        }
+
+        if (compareSummary) {
+          compareSummary.classList.remove('hidden');
+          sharedCount.textContent = data.sharedFields.length;
+          onlyACount.textContent = data.onlyInAFields.length;
+          onlyBCount.textContent = data.onlyInBFields.length;
+        }
+      } catch (err) {
+        alert(`Comparison failed: ${err.message}`);
+      } finally {
+        compareBtn.disabled = false;
+        compareBtn.innerHTML = '<i class="fa-solid fa-arrows-rotate button-icon"></i> Compare Messages';
+      }
+    });
+  }
+
+  // --- Compare visual helpers ---
+  // Build grids for compare visualizers
+  function initCompareGrids() {
+    const ids = ['a-primary-bitmap-grid','a-secondary-bitmap-grid','b-primary-bitmap-grid','b-secondary-bitmap-grid'];
+    ids.forEach(id => {
+      const container = document.getElementById(id);
+      if (!container) return;
+      container.innerHTML = '';
+      for (let i = 0; i < 64; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'bit-cell';
+        const bitNum = id.includes('primary') ? (i + 1) : (i + 65);
+        cell.id = `${id}-bit-${bitNum}`;
+        cell.setAttribute('data-bit', bitNum);
+        cell.textContent = bitNum;
+        container.appendChild(cell);
+      }
+    });
+  }
+
+  function clearCompareVisual() {
+    ['a-primary-bitmap-grid','a-secondary-bitmap-grid','b-primary-bitmap-grid','b-secondary-bitmap-grid'].forEach(id => {
+      const container = document.getElementById(id);
+      if (!container) return;
+      container.querySelectorAll('.bit-cell').forEach(cell => {
+        cell.className = 'bit-cell';
+        const tooltip = cell.querySelector('.tooltip'); if (tooltip) tooltip.remove();
+        cell.onclick = null;
+      });
+    });
+    document.getElementById('a-secondary-container')?.classList.add('hidden');
+    document.getElementById('b-secondary-container')?.classList.add('hidden');
+  }
+
+  function openCompareFieldModal(bitNum, aField, bField) {
+    modalFieldTitle.textContent = `Field #${bitNum} Comparison`;
+    modalFieldName.textContent = fieldDescriptions[bitNum] || 'Reserved';
+    modalFieldType.textContent = `${aField?.type || '-'}  |  ${bField?.type || '-'}`;
+    modalFieldLen.textContent = `${aField?.length ?? '-'}  |  ${bField?.length ?? '-'}`;
+    modalFieldFormat.textContent = `${aField?.format || '-'}  |  ${bField?.format || '-'}`;
+    const aRaw = aField ? `${aField.rawValue}` : '(no value)';
+    const bRaw = bField ? `${bField.rawValue}` : '(no value)';
+    modalFieldValue.value = `Message A:\n${aRaw}\n\nMessage B:\n${bRaw}`;
+    fieldModal.classList.remove('hidden');
+  }
+
+  function renderVisualCompare(result) {
+    initCompareGrids();
+    clearCompareVisual();
+
+    // Fill MTI and metadata A
+    document.getElementById('a-mti-badge').textContent = result.a.mti.value || '-';
+    document.getElementById('a-mti-version').textContent = result.a.mti.version || '-';
+    document.getElementById('a-mti-class').textContent = result.a.mti.class || '-';
+    document.getElementById('a-mti-func').textContent = result.a.mti.function || '-';
+    document.getElementById('a-mti-origin').textContent = result.a.mti.originator || '-';
+    document.getElementById('a-meta-format').textContent = result.a.inputFormat || '-';
+    document.getElementById('a-meta-header').textContent = result.a.header || '-';
+    document.getElementById('a-meta-pbitmap').textContent = result.a.primaryBitmap?.hex || '-';
+    document.getElementById('a-meta-sbitmap').textContent = result.a.secondaryBitmap?.hex || 'None';
+
+    // Fill MTI and metadata B
+    document.getElementById('b-mti-badge').textContent = result.b.mti.value || '-';
+    document.getElementById('b-mti-version').textContent = result.b.mti.version || '-';
+    document.getElementById('b-mti-class').textContent = result.b.mti.class || '-';
+    document.getElementById('b-mti-func').textContent = result.b.mti.function || '-';
+    document.getElementById('b-mti-origin').textContent = result.b.mti.originator || '-';
+    document.getElementById('b-meta-format').textContent = result.b.inputFormat || '-';
+    document.getElementById('b-meta-header').textContent = result.b.header || '-';
+    document.getElementById('b-meta-pbitmap').textContent = result.b.primaryBitmap?.hex || '-';
+    document.getElementById('b-meta-sbitmap').textContent = result.b.secondaryBitmap?.hex || 'None';
+
+    // Build presence sets
+    const aActive = new Set([...(result.a.primaryBitmap?.activeFields || []), ...(result.a.secondaryBitmap?.activeFields || [])]);
+    const bActive = new Set([...(result.b.primaryBitmap?.activeFields || []), ...(result.b.secondaryBitmap?.activeFields || [])]);
+
+    // Ensure secondary containers visibility
+    if ((result.a.secondaryBitmap && result.a.secondaryBitmap.activeFields && result.a.secondaryBitmap.activeFields.length>0) || (result.b.secondaryBitmap && result.b.secondaryBitmap.activeFields && result.b.secondaryBitmap.activeFields.length>0)) {
+      document.getElementById('a-secondary-container')?.classList.remove('hidden');
+      document.getElementById('b-secondary-container')?.classList.remove('hidden');
+    }
+
+    // Mark presence and attach click handlers for bits 1..128
+    for (let bit = 1; bit <= 128; bit++) {
+      const aId = bit <= 64 ? `a-primary-bitmap-grid-bit-${bit}` : `a-secondary-bitmap-grid-bit-${bit}`;
+      const bId = bit <= 64 ? `b-primary-bitmap-grid-bit-${bit}` : `b-secondary-bitmap-grid-bit-${bit}`;
+      const aEl = document.getElementById(aId);
+      const bEl = document.getElementById(bId);
+      const inA = aActive.has(bit);
+      const inB = bActive.has(bit);
+      if (aEl) {
+        if (inA) aEl.classList.add('present-a');
+        aEl.onclick = () => openCompareFieldModal(bit, result.a.fields?.[bit], result.b.fields?.[bit]);
+        if (inA || inB) {
+          const tt = document.createElement('span'); tt.className='tooltip'; tt.textContent = fieldDescriptions[bit] || 'Reserved';
+          if (!aEl.querySelector('.tooltip')) aEl.appendChild(tt);
+        }
+      }
+      if (bEl) {
+        if (inB) bEl.classList.add('present-b');
+        bEl.onclick = () => openCompareFieldModal(bit, result.a.fields?.[bit], result.b.fields?.[bit]);
+        if (inA || inB) {
+          const tt2 = document.createElement('span'); tt2.className='tooltip'; tt2.textContent = fieldDescriptions[bit] || 'Reserved';
+          if (!bEl.querySelector('.tooltip')) bEl.appendChild(tt2);
+        }
+      }
+
+      // comparison classes
+      if (result.primaryBitmapComparison && bit <= 64) {
+        if ((result.primaryBitmapComparison.commonBits || []).includes(bit)) {
+          if (aEl) aEl.classList.add('common-bit');
+          if (bEl) bEl.classList.add('common-bit');
+        } else if ((result.primaryBitmapComparison.onlyInA || []).includes(bit)) {
+          if (aEl) aEl.classList.add('only-a-bit');
+        } else if ((result.primaryBitmapComparison.onlyInB || []).includes(bit)) {
+          if (bEl) bEl.classList.add('only-b-bit');
+        }
+      }
+      if (result.secondaryBitmapComparison && bit > 64) {
+        if ((result.secondaryBitmapComparison.commonBits || []).includes(bit)) {
+          if (aEl) aEl.classList.add('common-bit');
+          if (bEl) bEl.classList.add('common-bit');
+        } else if ((result.secondaryBitmapComparison.onlyInA || []).includes(bit)) {
+          if (aEl) aEl.classList.add('only-a-bit');
+        } else if ((result.secondaryBitmapComparison.onlyInB || []).includes(bit)) {
+          if (bEl) bEl.classList.add('only-b-bit');
+        }
+      }
+    }
+
+    // add small helper tooltips text for any marked bits not already done
+    document.querySelectorAll('.common-bit, .only-a-bit, .only-b-bit, .present-a, .present-b').forEach(el => {
+      const bit = Number(el.getAttribute('data-bit'));
+      if (!bit) return;
+      const tooltip = el.querySelector('.tooltip');
+      if (!tooltip) {
+        const t = document.createElement('span');
+        t.className = 'tooltip';
+        t.textContent = fieldDescriptions[bit] || 'Reserved';
+        el.appendChild(t);
+      }
+    });
+  }
 });
