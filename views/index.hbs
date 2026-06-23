@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{title}}</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- FontAwesome for Premium Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="glass-bg"></div>
+  <div class="container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">
+          <i class="fa-solid fa-microchip"></i>
+        </div>
+        <div class="brand-text">
+          <h1>ISO 8583 <span class="accent-text">Analyzer</span></h1>
+          <p class="subtitle">Decode financial transaction messages into structured JSON instantly</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <a href="https://github.com" target="_blank" class="action-btn-link">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="dashboard-grid">
+      <!-- Left Column: Controls and Input -->
+      <section class="panel control-panel">
+        <div class="panel-header">
+          <h2><i class="fa-solid fa-keyboard icon-accent"></i> Input ISO Message</h2>
+        </div>
+        <div class="panel-body">
+          <div class="textarea-container">
+            <textarea id="raw-message" placeholder="Paste your ISO 8583 message (ASCII string or hex dump)..." rows="6"></textarea>
+            <button id="clear-btn" class="icon-btn-inline" title="Clear message">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <div class="action-row">
+            <button id="parse-btn" class="btn btn-primary btn-block">
+              <i class="fa-solid fa-bolt button-icon"></i> Parse Message
+            </button>
+          </div>
+
+          <div class="samples-section">
+            <h3><i class="fa-solid fa-list-check"></i> Sample Templates</h3>
+            <div class="sample-buttons">
+              <button class="sample-btn" data-sample="purchase">
+                <span class="sample-mti">0200</span>
+                <span class="sample-desc">Purchase Request</span>
+              </button>
+              <button class="sample-btn" data-sample="echo">
+                <span class="sample-mti">0800</span>
+                <span class="sample-desc">Network Echo</span>
+              </button>
+              <button class="sample-btn" data-sample="reversal">
+                <span class="sample-mti">0400</span>
+                <span class="sample-desc">Reversal Request</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- MTI Decode Panel -->
+          <div id="mti-breakdown" class="mti-card hidden">
+            <div class="mti-card-header">
+              <span class="badge badge-mti" id="mti-badge">0200</span>
+              <h3>MTI Details</h3>
+            </div>
+            <div class="mti-grid">
+              <div class="mti-field">
+                <span class="mti-label">ISO Version</span>
+                <span class="mti-val" id="mti-version">-</span>
+              </div>
+              <div class="mti-field">
+                <span class="mti-label">Message Class</span>
+                <span class="mti-val" id="mti-class">-</span>
+              </div>
+              <div class="mti-field">
+                <span class="mti-label">Message Function</span>
+                <span class="mti-val" id="mti-func">-</span>
+              </div>
+              <div class="mti-field">
+                <span class="mti-label">Originator</span>
+                <span class="mti-val" id="mti-origin">-</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Parse Metadata -->
+          <div id="parse-metadata" class="metadata-card hidden">
+            <h3>Message Metadata</h3>
+            <ul>
+              <li><strong>Input Format:</strong> <span id="meta-format">-</span></li>
+              <li><strong>ISO Header:</strong> <span id="meta-header">-</span></li>
+              <li><strong>Primary Bitmap (Hex):</strong> <span id="meta-pbitmap" class="code-font">-</span></li>
+              <li><strong>Secondary Bitmap (Hex):</strong> <span id="meta-sbitmap" class="code-font">-</span></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Visual Bitmaps and Fields -->
+      <section class="panel results-panel">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="visualizer-tab">
+            <i class="fa-solid fa-table-cells-large"></i> Bitmap Visualizer
+          </button>
+          <button class="tab-btn" data-tab="fields-tab">
+            <i class="fa-solid fa-list-ul"></i> Parsed Fields
+          </button>
+          <button class="tab-btn" data-tab="json-tab">
+            <i class="fa-solid fa-code"></i> JSON Output
+          </button>
+        </div>
+
+        <div class="panel-body tab-content-wrapper">
+          <!-- Errors / Warnings -->
+          <div id="error-container" class="error-banner hidden">
+            <div class="error-banner-header">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              <h4>Parsing Warnings / Errors</h4>
+            </div>
+            <ul id="error-list"></ul>
+          </div>
+
+          <!-- Tab 1: Bitmap Visualizer -->
+          <div id="visualizer-tab" class="tab-content active">
+            <div class="bitmap-container">
+              <div class="bitmap-header-row">
+                <h3>Primary Bitmap Fields (1 - 64)</h3>
+                <div class="legend">
+                  <span class="legend-item"><span class="dot active"></span> Active</span>
+                  <span class="legend-item"><span class="dot inactive"></span> Inactive</span>
+                </div>
+              </div>
+              <div class="bitmap-grid" id="primary-bitmap-grid">
+                <!-- 64 bits generated dynamically -->
+              </div>
+            </div>
+
+            <div class="bitmap-container id-secondary-bitmap-container hidden" id="secondary-bitmap-container">
+              <div class="bitmap-header-row border-top">
+                <h3>Secondary Bitmap Fields (65 - 128)</h3>
+              </div>
+              <div class="bitmap-grid" id="secondary-bitmap-grid">
+                <!-- 64 bits generated dynamically -->
+              </div>
+            </div>
+
+            <!-- Visual Info Card -->
+            <div class="info-card">
+              <i class="fa-solid fa-info-circle"></i>
+              <p>Hover over any active bit in the grid above to view the field name. Click on it to view details.</p>
+            </div>
+          </div>
+
+          <!-- Tab 2: Parsed Fields -->
+          <div id="fields-tab" class="tab-content">
+            <div class="fields-table-wrapper">
+              <table class="fields-table">
+                <thead>
+                  <tr>
+                    <th>Bit</th>
+                    <th>Field Name</th>
+                    <th>Type</th>
+                    <th>Length</th>
+                    <th>Format</th>
+                    <th>Raw Value</th>
+                  </tr>
+                </thead>
+                <tbody id="fields-table-body">
+                  <tr>
+                    <td colspan="6" class="no-data">No parsed fields. Input an ISO message and click parse.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab 3: JSON Output -->
+          <div id="json-tab" class="tab-content">
+            <div class="code-viewer-container">
+              <div class="code-header">
+                <span><i class="fa-solid fa-code"></i> parsed_message.json</span>
+                <button id="copy-json-btn" class="btn btn-secondary btn-sm" disabled>
+                  <i class="fa-solid fa-copy"></i> Copy JSON
+                </button>
+              </div>
+              <pre><code class="code-font" id="json-viewer">{}</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>&copy; 2026 ISO 8583 Analyzer. Built with NestJS and pure visual excellence.</p>
+    </footer>
+  </div>
+
+  <!-- Detail Dialog / Modal for Fields -->
+  <div id="field-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-field-title">Field #2 Details</h3>
+        <button id="modal-close-btn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-grid">
+          <div class="modal-item">
+            <span class="modal-label">Name</span>
+            <span class="modal-val" id="modal-field-name">Primary Account Number (PAN)</span>
+          </div>
+          <div class="modal-item">
+            <span class="modal-label">Spec Type</span>
+            <span class="modal-val" id="modal-field-type">LLVAR</span>
+          </div>
+          <div class="modal-item">
+            <span class="modal-label">Length</span>
+            <span class="modal-val" id="modal-field-len">16</span>
+          </div>
+          <div class="modal-item">
+            <span class="modal-label">Format</span>
+            <span class="modal-val" id="modal-field-format">n (Numeric)</span>
+          </div>
+        </div>
+        <div class="modal-raw-section">
+          <span class="modal-label">Value</span>
+          <textarea id="modal-field-value" readonly rows="4" class="code-font"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Client-side script -->
+  <script src="/js/app.js"></script>
+</body>
+</html>
