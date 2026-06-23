@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { ISO_8583_1987_SPEC, FieldSpec } from './fields';
+import { parseBitmap } from './parser/bitmap';
+import { parseFields } from './parser/fields-parser';
+import { hexToAscii } from './parser/utils';
+import { mtiVersions, mtiClasses, mtiFunctions, mtiOriginators } from './mti';
 
 export interface ParsedField {
   fieldNumber: number;
   name: string;
-  type: 'fixed' | 'llvar' | 'lllvar';
+  type: FieldSpec['type'];
   length: number;
-  format: string;
+  format: FieldSpec['format'];
   rawValue: string;
 }
 
@@ -39,44 +43,11 @@ export interface ParsedIsoMessage {
 
 @Injectable()
 export class Iso8583Service {
-  private readonly mtiVersions: Record<string, string> = {
-    '0': 'ISO 8583:1987',
-    '1': 'ISO 8583:1993',
-    '2': 'ISO 8583:2003',
-    '9': 'Private Use',
-  };
-
-  private readonly mtiClasses: Record<string, string> = {
-    '1': 'Authorization',
-    '2': 'Financial',
-    '3': 'File Actions',
-    '4': 'Reversal / Chargeback',
-    '5': 'Reconciliation',
-    '6': 'Administrative',
-    '7': 'Fee Collection',
-    '8': 'Network Management',
-    '9': 'Reserved',
-  };
-
-  private readonly mtiFunctions: Record<string, string> = {
-    '0': 'Request',
-    '1': 'Request Response',
-    '2': 'Advice',
-    '3': 'Advice Response',
-    '4': 'Notification',
-    '5': 'Notification Response',
-    '6': 'Inquiry',
-    '7': 'Inquiry Response',
-  };
-
-  private readonly mtiOriginators: Record<string, string> = {
-    '0': 'Acquirer',
-    '1': 'Acquirer Repeat',
-    '2': 'Issuer',
-    '3': 'Issuer Repeat',
-    '4': 'Other',
-    '5': 'Other Repeat',
-  };
+  // MTI lookup maps are defined in `src/iso8583/mti.ts`
+  private readonly mtiVersions = mtiVersions;
+  private readonly mtiClasses = mtiClasses;
+  private readonly mtiFunctions = mtiFunctions;
+  private readonly mtiOriginators = mtiOriginators;
 
   /**
    * Main entry point to parse an ISO 8583 transaction message.
@@ -125,7 +96,7 @@ export class Iso8583Service {
     const primaryBitmapHex = cleaned.substring(offset, offset + 16);
     let primaryBitmap: BitmapDetails;
     try {
-      const bitmapResult = this.parseBitmap(cleaned, offset, 1);
+      const bitmapResult = parseBitmap(cleaned, offset, 1);
       primaryBitmap = bitmapResult.bitmap;
       offset = bitmapResult.nextOffset;
     } catch (e: unknown) {
@@ -147,7 +118,7 @@ export class Iso8583Service {
       } else {
         const secondaryBitmapHex = cleaned.substring(offset, offset + 16);
         try {
-          const bitmapResult = this.parseBitmap(cleaned, offset, 65);
+          const bitmapResult = parseBitmap(cleaned, offset, 65);
           secondaryBitmap = bitmapResult.bitmap;
           offset = bitmapResult.nextOffset;
         } catch (e: unknown) {
@@ -166,7 +137,7 @@ export class Iso8583Service {
     ].sort((a, b) => a - b);
 
     // 7. Decode active fields
-    const { fields, nextOffset: offsetAfterFields } = this.parseFields(
+    const { fields, nextOffset: offsetAfterFields } = parseFields(
       cleaned,
       offset,
       activeFields,
@@ -210,7 +181,7 @@ export class Iso8583Service {
       const sansSpaces = cleaned.replace(/\s+/g, '');
       if (sansSpaces.length % 2 === 0) {
         try {
-          const decoded = this.hexToAscii(sansSpaces);
+          const decoded = hexToAscii(sansSpaces);
           if (/^(ISO\d{9})?\d{4}/.test(decoded) || decoded.startsWith('ISO')) {
             cleaned = decoded;
             inputFormat = 'hex_decoded';
@@ -280,179 +251,7 @@ export class Iso8583Service {
         this.mtiOriginators[mtiValue[3]] ?? `Unknown (${mtiValue[3]})`,
     };
     return { mti: mtiDetails, nextOffset: offset + 4 };
-  }
-
-  /**
-   * Decodes a 16-hexadecimal character bitmap starting at `offset`.
-   * Maps active fields offset by the starting index (1 for primary, 65 for secondary).
-   */
-  private parseBitmap(
-    cleaned: string,
-    offset: number,
-    startFieldNumber: number,
-  ): { bitmap: BitmapDetails; nextOffset: number } {
-    const bitmapHex = cleaned.substring(offset, offset + 16);
-    const binary = this.hexToBinary(bitmapHex);
-    const activeFields: number[] = [];
-
-    for (let i = 0; i < 64; i++) {
-      if (binary[i] === '1') {
-        activeFields.push(i + startFieldNumber);
-      }
-    }
-
-    return {
-      bitmap: { hex: bitmapHex, binary, activeFields },
-      nextOffset: offset + 16,
-    };
-  }
-
-  /**
-   * Decodes the list of active fields from the message.
-   */
-  private parseFields(
-    cleaned: string,
-    startOffset: number,
-    activeFields: number[],
-    errors: string[],
-  ): { fields: Record<number, ParsedField>; nextOffset: number } {
-    const fields: Record<number, ParsedField> = {};
-    let offset = startOffset;
-
-    for (const fieldNumber of activeFields) {
-      if (offset >= cleaned.length) {
-        errors.push(
-          `Message truncated: field ${fieldNumber} was expected but raw message ended.`,
-        );
-        break;
-      }
-
-      const spec: FieldSpec = ISO_8583_1987_SPEC[fieldNumber] || {
-        name: `Proprietary / Unknown Field ${fieldNumber}`,
-        type: 'lllvar',
-        length: 999,
-        format: 'ans',
-      };
-
-      try {
-        let fieldValue = '';
-        if (spec.type === 'fixed') {
-          if (cleaned.length < offset + spec.length) {
-            errors.push(
-              `Truncated fixed field ${fieldNumber} ("${spec.name}"): expected ${spec.length} chars, got ${cleaned.length - offset}`,
-            );
-            fieldValue = cleaned.substring(offset);
-            offset = cleaned.length;
-          } else {
-            fieldValue = cleaned.substring(offset, offset + spec.length);
-            offset += spec.length;
-          }
-        } else if (spec.type === 'llvar') {
-          if (cleaned.length < offset + 2) {
-            errors.push(
-              `Truncated LLVAR field ${fieldNumber} ("${spec.name}"): cannot read 2-digit length indicator`,
-            );
-            offset = cleaned.length;
-          } else {
-            const lengthIndicatorStr = cleaned.substring(offset, offset + 2);
-            const lengthIndicator = parseInt(lengthIndicatorStr, 10);
-            offset += 2;
-
-            if (isNaN(lengthIndicator)) {
-              errors.push(
-                `Invalid LLVAR length indicator "${lengthIndicatorStr}" for field ${fieldNumber}`,
-              );
-            } else {
-              if (cleaned.length < offset + lengthIndicator) {
-                errors.push(
-                  `Truncated LLVAR field ${fieldNumber} ("${spec.name}"): expected ${lengthIndicator} chars, got ${cleaned.length - offset}`,
-                );
-                fieldValue = cleaned.substring(offset);
-                offset = cleaned.length;
-              } else {
-                fieldValue = cleaned.substring(
-                  offset,
-                  offset + lengthIndicator,
-                );
-                offset += lengthIndicator;
-              }
-            }
-          }
-        } else if (spec.type === 'lllvar') {
-          if (cleaned.length < offset + 3) {
-            errors.push(
-              `Truncated LLLVAR field ${fieldNumber} ("${spec.name}"): cannot read 3-digit length indicator`,
-            );
-            offset = cleaned.length;
-          } else {
-            const lengthIndicatorStr = cleaned.substring(offset, offset + 3);
-            const lengthIndicator = parseInt(lengthIndicatorStr, 10);
-            offset += 3;
-
-            if (isNaN(lengthIndicator)) {
-              errors.push(
-                `Invalid LLLVAR length indicator "${lengthIndicatorStr}" for field ${fieldNumber}`,
-              );
-            } else {
-              if (cleaned.length < offset + lengthIndicator) {
-                errors.push(
-                  `Truncated LLLVAR field ${fieldNumber} ("${spec.name}"): expected ${lengthIndicator} chars, got ${cleaned.length - offset}`,
-                );
-                fieldValue = cleaned.substring(offset);
-                offset = cleaned.length;
-              } else {
-                fieldValue = cleaned.substring(
-                  offset,
-                  offset + lengthIndicator,
-                );
-                offset += lengthIndicator;
-              }
-            }
-          }
-        }
-
-        fields[fieldNumber] = {
-          fieldNumber,
-          name: spec.name,
-          type: spec.type,
-          length: fieldValue.length,
-          format: spec.format,
-          rawValue: fieldValue,
-        };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        errors.push(`Error parsing field ${fieldNumber}: ${msg}`);
-      }
-    }
-
-    return { fields, nextOffset: offset };
-  }
-
-  /**
-   * Converts a hexadecimal digit string to a binary 4-bit block string.
-   */
-  private hexToBinary(hex: string): string {
-    let binary = '';
-    for (const char of hex) {
-      const parsed = parseInt(char, 16);
-      if (isNaN(parsed)) {
-        throw new Error(`Invalid hex character: "${char}"`);
-      }
-      binary += parsed.toString(2).padStart(4, '0');
-    }
-    return binary;
-  }
-
-  /**
-   * Decodes a hexadecimal string into ASCII text.
-   */
-  private hexToAscii(hex: string): string {
-    let str = '';
-    for (let i = 0; i < hex.length; i += 2) {
-      str += String.fromCharCode(parseInt(hex.substring(i, i + 2), 16));
-    }
-    return str;
-  }
+  }  
 
   /**
    * Fallback structure for aborted parses.

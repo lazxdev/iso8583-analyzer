@@ -1,11 +1,14 @@
+export type FieldType = 'fixed' | 'llvar' | 'lllvar';
+export type FieldFormat = 'n' | 'an' | 'ans' | 'b' | 'z' | 'xn' | 'ns';
+
 export interface FieldSpec {
   name: string;
-  type: 'fixed' | 'llvar' | 'lllvar';
+  type: FieldType;
   length: number;
-  format: string;
+  format: FieldFormat;
 }
 
-export const ISO_8583_1987_SPEC: Record<number, FieldSpec> = {
+export const ISO_8583_1987_SPEC: Readonly<Record<number, FieldSpec>> = {
   1: { name: 'Second Bitmap', type: 'fixed', length: 16, format: 'b' },
   2: {
     name: 'Primary Account Number (PAN)',
