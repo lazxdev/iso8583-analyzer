@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common';
 import { ISO_8583_1987_SPEC, FieldSpec } from './fields';
 import { parseBitmap } from './parser/bitmap';
 import { parseFields } from './parser/fields-parser';
@@ -41,7 +40,6 @@ export interface ParsedIsoMessage {
   errors: string[];
 }
 
-@Injectable()
 export class Iso8583Service {
   // MTI lookup maps are defined in `src/iso8583/mti.ts`
   private readonly mtiVersions = mtiVersions;
