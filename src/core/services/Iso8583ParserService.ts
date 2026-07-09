@@ -1,67 +1,23 @@
-import { ISO_8583_1987_SPEC, FieldSpec } from './fields';
-import { parseBitmap } from './parser/bitmap';
-import { parseFields } from './parser/fields-parser';
-import { hexToAscii } from './parser/utils';
-import { mtiVersions, mtiClasses, mtiFunctions, mtiOriginators } from './mti';
+import type { Iso8583Parser } from '../interfaces/iso8583-parser';
+import type { MtiLookupProvider } from '../interfaces/mti-lookup-provider';
+import type { InputNormalizer } from '../interfaces/input-normalizer';
+import type { BitmapParser } from '../interfaces/bitmap-parser';
+import type { FieldsParser } from '../interfaces/fields-parser';
+import type { MtiDetails, BitmapDetails, ParsedIsoMessage } from '../../types';
 
-export interface ParsedField {
-  fieldNumber: number;
-  name: string;
-  type: FieldSpec['type'];
-  length: number;
-  format: FieldSpec['format'];
-  rawValue: string;
-}
+export class Iso8583ParserService implements Iso8583Parser {
+  constructor(
+    private readonly mtiLookup: MtiLookupProvider,
+    private readonly inputNormalizer: InputNormalizer,
+    private readonly bitmapParser: BitmapParser,
+    private readonly fieldsParser: FieldsParser,
+  ) {}
 
-export interface MtiDetails {
-  value: string;
-  version: string;
-  class: string;
-  function: string;
-  originator: string;
-}
-
-export interface BitmapDetails {
-  hex: string;
-  binary: string;
-  activeFields: number[];
-}
-
-export interface ParsedIsoMessage {
-  inputFormat: 'ascii' | 'hex_decoded';
-  rawInput: string;
-  cleanedInput: string;
-  header: string;
-  mti: MtiDetails;
-  primaryBitmap: BitmapDetails;
-  secondaryBitmap?: BitmapDetails;
-  fields: Record<number, ParsedField>;
-  isValid: boolean;
-  errors: string[];
-}
-
-export class Iso8583Service {
-  // MTI lookup maps are defined in `src/iso8583/mti.ts`
-  private readonly mtiVersions = mtiVersions;
-  private readonly mtiClasses = mtiClasses;
-  private readonly mtiFunctions = mtiFunctions;
-  private readonly mtiOriginators = mtiOriginators;
-
-  /**
-   * Main entry point to parse an ISO 8583 transaction message.
-   * Extracts transport header, message type indicator (MTI), primary and secondary bitmaps,
-   * and decodes all present message fields.
-   *
-   * @param rawInput The raw ISO 8583 message string (ASCII text or hex-encoded data).
-   * @returns A structured result mapping decoded field values and parsing metadata.
-   */
   parseMessage(rawInput: string): ParsedIsoMessage {
     const errors: string[] = [];
 
-    // 1. Detect encoding & normalize whitespace
-    const { cleaned, inputFormat } = this.detectAndNormalizeInput(rawInput);
+    const { cleaned, inputFormat } = this.inputNormalizer.normalize(rawInput);
 
-    // 2. Scan and extract transport headers / determine MTI offset
     let header = '';
     let offset = 0;
     try {
@@ -75,16 +31,15 @@ export class Iso8583Service {
       ]);
     }
 
-    // 3. Parse Message Type Indicator (MTI)
     if (cleaned.length < offset + 4) {
       return this.createErrorResponse(rawInput, cleaned, inputFormat, [
         'Message is too short to contain a 4-digit MTI',
       ]);
     }
+
     const { mti, nextOffset: offsetAfterMti } = this.parseMti(cleaned, offset);
     offset = offsetAfterMti;
 
-    // 4. Parse Primary Bitmap
     if (cleaned.length < offset + 16) {
       return this.createErrorResponse(rawInput, cleaned, inputFormat, [
         `Message truncated: expected 16-hex-character Primary Bitmap at index ${offset}`,
@@ -94,7 +49,7 @@ export class Iso8583Service {
     const primaryBitmapHex = cleaned.substring(offset, offset + 16);
     let primaryBitmap: BitmapDetails;
     try {
-      const bitmapResult = parseBitmap(cleaned, offset, 1);
+      const bitmapResult = this.bitmapParser.parse(cleaned, offset, 1);
       primaryBitmap = bitmapResult.bitmap;
       offset = bitmapResult.nextOffset;
     } catch (e: unknown) {
@@ -104,8 +59,7 @@ export class Iso8583Service {
       ]);
     }
 
-    // 5. Parse Secondary Bitmap if present (bit 1 is set in Primary Bitmap)
-    let secondaryBitmap: BitmapDetails | undefined = undefined;
+    let secondaryBitmap: BitmapDetails | undefined;
     const hasSecondary = primaryBitmap.binary[0] === '1';
 
     if (hasSecondary) {
@@ -116,26 +70,22 @@ export class Iso8583Service {
       } else {
         const secondaryBitmapHex = cleaned.substring(offset, offset + 16);
         try {
-          const bitmapResult = parseBitmap(cleaned, offset, 65);
+          const bitmapResult = this.bitmapParser.parse(cleaned, offset, 65);
           secondaryBitmap = bitmapResult.bitmap;
           offset = bitmapResult.nextOffset;
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
-          errors.push(
-            `Invalid Secondary Bitmap Hex "${secondaryBitmapHex}": ${msg}`,
-          );
+          errors.push(`Invalid Secondary Bitmap Hex "${secondaryBitmapHex}": ${msg}`);
         }
       }
     }
 
-    // 6. Build final list of active fields (filtering out bit 1 representing the secondary bitmap itself)
     const activeFields = [
       ...primaryBitmap.activeFields.filter((f) => f !== 1),
       ...(secondaryBitmap ? secondaryBitmap.activeFields : []),
     ].sort((a, b) => a - b);
 
-    // 7. Decode active fields
-    const { fields, nextOffset: offsetAfterFields } = parseFields(
+    const { fields, nextOffset: offsetAfterFields } = this.fieldsParser.parse(
       cleaned,
       offset,
       activeFields,
@@ -143,7 +93,6 @@ export class Iso8583Service {
     );
     offset = offsetAfterFields;
 
-    // 8. Capture leftover unparsed characters
     if (offset < cleaned.length) {
       errors.push(
         `Extra unparsed data at end of message (offset ${offset}/${cleaned.length}): "${cleaned.substring(offset)}"`,
@@ -164,40 +113,6 @@ export class Iso8583Service {
     };
   }
 
-  /**
-   * Identifies hex-encoded inputs, decodes them to ASCII, and strips vertical whitespace.
-   */
-  private detectAndNormalizeInput(rawInput: string): {
-    cleaned: string;
-    inputFormat: 'ascii' | 'hex_decoded';
-  } {
-    let cleaned = rawInput.trim();
-    let inputFormat: 'ascii' | 'hex_decoded' = 'ascii';
-
-    const hexRegex = /^[0-9a-fA-F\s]+$/;
-    if (hexRegex.test(cleaned)) {
-      const sansSpaces = cleaned.replace(/\s+/g, '');
-      if (sansSpaces.length % 2 === 0) {
-        try {
-          const decoded = hexToAscii(sansSpaces);
-          if (/^(ISO\d{9})?\d{4}/.test(decoded) || decoded.startsWith('ISO')) {
-            cleaned = decoded;
-            inputFormat = 'hex_decoded';
-          }
-        } catch {
-          // Keep raw ascii on decode failure
-        }
-      }
-    }
-
-    cleaned = cleaned.replace(/[\r\n\t]+/g, '').trim();
-    return { cleaned, inputFormat };
-  }
-
-  /**
-   * Scans the cleaned message for headers (such as 'ISO' prefixes or custom system wrappers)
-   * and returns the header value along with the offset index indicating the starting point of the MTI.
-   */
   private extractHeaderAndMtiOffset(
     cleaned: string,
     errors: string[],
@@ -219,7 +134,7 @@ export class Iso8583Service {
     const mtiSearchArea = cleaned.substring(searchStart);
     const mtiMatch = mtiSearchArea.match(/(\d{4})([0-9a-fA-F]{16})/);
 
-    if (mtiMatch && mtiMatch.index !== undefined) {
+    if (mtiMatch?.index !== undefined) {
       const matchIndex = searchStart + mtiMatch.index;
       header = cleaned.substring(0, matchIndex);
       offset = matchIndex;
@@ -232,9 +147,6 @@ export class Iso8583Service {
     return { header, offset };
   }
 
-  /**
-   * Decodes the 4-digit MTI fields.
-   */
   private parseMti(
     cleaned: string,
     offset: number,
@@ -242,18 +154,14 @@ export class Iso8583Service {
     const mtiValue = cleaned.substring(offset, offset + 4);
     const mtiDetails: MtiDetails = {
       value: mtiValue,
-      version: this.mtiVersions[mtiValue[0]] ?? `Unknown (${mtiValue[0]})`,
-      class: this.mtiClasses[mtiValue[1]] ?? `Unknown (${mtiValue[1]})`,
-      function: this.mtiFunctions[mtiValue[2]] ?? `Unknown (${mtiValue[2]})`,
-      originator:
-        this.mtiOriginators[mtiValue[3]] ?? `Unknown (${mtiValue[3]})`,
+      version: this.mtiLookup.lookupVersion(mtiValue[0]),
+      class: this.mtiLookup.lookupClass(mtiValue[1]),
+      function: this.mtiLookup.lookupFunction(mtiValue[2]),
+      originator: this.mtiLookup.lookupOriginator(mtiValue[3]),
     };
     return { mti: mtiDetails, nextOffset: offset + 4 };
-  }  
+  }
 
-  /**
-   * Fallback structure for aborted parses.
-   */
   private createErrorResponse(
     rawInput: string,
     cleaned: string,

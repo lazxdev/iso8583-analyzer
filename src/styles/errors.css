@@ -1,0 +1,29 @@
+.error-banner {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  color: #fca5a5;
+  animation: slideInDown 0.3s ease;
+}
+
+.error-banner-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.error-banner h4 {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.error-banner ul {
+  list-style-position: inside;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}

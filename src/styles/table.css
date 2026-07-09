@@ -1,0 +1,56 @@
+.fields-table-wrapper {
+  overflow-x: auto;
+  margin: -1.5rem;
+}
+
+.fields-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.fields-table th,
+.fields-table td {
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.fields-table th {
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+}
+
+.fields-table tr {
+  transition: background-color 0.2s ease;
+}
+
+.fields-table tr:hover:not(.no-data-row) {
+  background-color: rgba(255, 255, 255, 0.015);
+  cursor: pointer;
+}
+
+.fields-table td.field-num {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.fields-table td.field-val-cell {
+  font-family: var(--font-mono);
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fields-table td.no-data {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 3rem 1rem;
+  font-style: italic;
+}

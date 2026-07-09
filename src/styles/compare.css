@@ -1,0 +1,77 @@
+.compare-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: fadeIn 0.3s ease;
+}
+
+.compare-input-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.compare-input-panel textarea {
+  width: 100%;
+  min-height: 120px;
+}
+
+.compare-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.compare-results {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: fadeIn 0.35s ease;
+}
+
+.compare-mti-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.compare-stats {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+  padding: 12px 0;
+}
+
+.compare-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.compare-stat-num {
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1;
+  font-family: var(--font-mono);
+}
+
+.compare-stat-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .compare-input-row,
+  .compare-mti-row {
+    grid-template-columns: 1fr;
+  }
+
+  .compare-stats {
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+}
